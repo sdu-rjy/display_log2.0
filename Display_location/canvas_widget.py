@@ -45,6 +45,27 @@ class LogCanvas(pg.GraphicsLayoutWidget):
                 mouse_point = self.plot_item.vb.mapSceneToView(pos)
                 self.canvas_clicked_pos.emit(mouse_point.x(), mouse_point.y())
 
+    def update_unified_trajectory(self, x_pts, y_pts):
+        """ 清理旧的轨迹，并绘制合并后的单一轨迹 """
+        # 清理之前可能按文件加载的零散轨迹
+        for item in self.traj_items.values():
+            self.plot_item.removeItem(item)
+            try:
+                self.legend.removeItem(item)
+            except:
+                pass
+        self.traj_items.clear()
+
+        # 如果还没有创建统一的曲线，则创建它
+        if not hasattr(self, 'unified_curve'):
+            self.unified_curve = pg.PlotCurveItem(pen=self.traj_pen, name="Trajectory")
+            self.unified_curve.setZValue(10)
+            self.plot_item.addItem(self.unified_curve)
+        
+        # 更新数据
+        self.unified_curve.setData(x_pts, y_pts)
+
+
     def update_maps(self, maps_data):
         for item in self.map_items.values():
             self.plot_item.removeItem(item)
@@ -54,9 +75,42 @@ class LogCanvas(pg.GraphicsLayoutWidget):
         for i, (name, points) in enumerate(maps_data.items()):
             if points is None or len(points) == 0:
                 continue
+            
+            # 获取默认样式（作为备选方案）
             style = self.map_styles[i % len(self.map_styles)]
-            item = pg.ScatterPlotItem(pos=points, size=style['size'], symbol=style['symbol'],
-                                      brush=style['brush'], pen=style['pen'], pxMode=True, name=name)
+            
+            # ==========================================
+            # [新增逻辑] 根据地图名(name)动态覆盖点的大小和颜色
+            # ==========================================
+            name_lower = name.lower()
+            
+            if "global" in name_lower or "normal_map" in name_lower:
+                # 全局地图：白色，点设为 1 (细密)
+                dynamic_size = 1 
+                dynamic_brush = (255, 255, 255, 200)  # 白色
+            elif "reflector" in name_lower or "mark" in name_lower or "feature" in name_lower:
+                # 反光板/特征/地标地图：红色，点设为 8 (醒目)
+                dynamic_size = 8
+                dynamic_brush = (255, 0, 0, 200)      # 红色
+            elif "local" in name_lower:
+                # 局部地图：适中，颜色使用循环的默认颜色
+                dynamic_size = 3
+                dynamic_brush = style['brush']
+            else:
+                # 未知名称，完全使用字典里默认的 size 和 brush
+                dynamic_size = style['size'] 
+                dynamic_brush = style['brush']
+
+            # 创建散点图时，使用 dynamic_size 和 dynamic_brush
+            item = pg.ScatterPlotItem(
+                pos=points, 
+                size=dynamic_size,         # <--- 使用动态大小
+                symbol=style['symbol'],
+                brush=dynamic_brush,       # <--- 使用动态颜色
+                pen=style['pen'], 
+                pxMode=True, 
+                name=name
+            )
             item.setZValue(-10)
             self.plot_item.addItem(item)
             self.map_items[name] = item

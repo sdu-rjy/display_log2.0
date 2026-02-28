@@ -62,23 +62,23 @@ class MainWindow(QMainWindow):
         ctrl_layout.addWidget(grp_src)
 
         # 2. 激活日志控制
-        grp_active = QGroupBox("Data Control Source")
-        active_layout = QVBoxLayout()
-        self.lbl_active_name = QLabel("Source: None") 
-        self.lbl_active_name.setStyleSheet("color: blue; font-weight: bold;")
+        # grp_active = QGroupBox("Data Control Source")
+        # active_layout = QVBoxLayout()
+        # self.lbl_active_name = QLabel("Source: None") 
+        # self.lbl_active_name.setStyleSheet("color: blue; font-weight: bold;")
         
-        switch_layout = QHBoxLayout()
-        self.btn_prev_log = QPushButton("< Prev Log")
-        self.btn_prev_log.clicked.connect(self.switch_prev_log)
-        self.btn_next_log = QPushButton("Next Log >")
-        self.btn_next_log.clicked.connect(self.switch_next_log)
-        switch_layout.addWidget(self.btn_prev_log)
-        switch_layout.addWidget(self.btn_next_log)
+        # switch_layout = QHBoxLayout()
+        # self.btn_prev_log = QPushButton("< Prev Log")
+        # self.btn_prev_log.clicked.connect(self.switch_prev_log)
+        # self.btn_next_log = QPushButton("Next Log >")
+        # self.btn_next_log.clicked.connect(self.switch_next_log)
+        # switch_layout.addWidget(self.btn_prev_log)
+        # switch_layout.addWidget(self.btn_next_log)
         
-        active_layout.addWidget(self.lbl_active_name)
-        active_layout.addLayout(switch_layout)
-        grp_active.setLayout(active_layout)
-        ctrl_layout.addWidget(grp_active)
+        # active_layout.addWidget(self.lbl_active_name)
+        # active_layout.addLayout(switch_layout)
+        # grp_active.setLayout(active_layout)
+        # ctrl_layout.addWidget(grp_active)
 
         # 3. 详细信息
         grp_info = QGroupBox("Frame Details")
@@ -126,7 +126,7 @@ class MainWindow(QMainWindow):
         grp_play.setLayout(play_layout)
         ctrl_layout.addWidget(grp_play)
 
-        # === 轨迹时间范围过滤 ===
+        # 5. 轨迹时间范围过滤 (按时间戳)
         grp_filter = QGroupBox("Trajectory Time Filter")
         filter_layout = QFormLayout()
         
@@ -142,17 +142,24 @@ class MainWindow(QMainWindow):
         self.cmb_filter_start.setMaxVisibleItems(15)
         self.cmb_filter_end.setMaxVisibleItems(15)
 
+        self.slider_filter_start = QSlider(Qt.Horizontal)
+        self.slider_filter_end = QSlider(Qt.Horizontal)
+        self.slider_filter_start.setToolTip("Drag to set Start Time")
+        self.slider_filter_end.setToolTip("Drag to set End Time")
+
         self.lbl_filter_info = QLabel("Frames: --")
         self.lbl_filter_info.setStyleSheet("color: #333333; font-size: 11px;")
         
         filter_layout.addRow("Start Time:", self.cmb_filter_start)
+        filter_layout.addRow("Start Slider:", self.slider_filter_start) # 起点滑块
         filter_layout.addRow("End Time:", self.cmb_filter_end)
+        filter_layout.addRow("End Slider:", self.slider_filter_end)     # 终点滑块
         filter_layout.addRow(self.lbl_filter_info)
-        
-        # 绑定值变化信号 (当下拉框改变时触发)
+
         self.cmb_filter_start.currentIndexChanged.connect(self.on_filter_changed)
         self.cmb_filter_end.currentIndexChanged.connect(self.on_filter_changed)
-        
+        self.slider_filter_start.valueChanged.connect(self.cmb_filter_start.setCurrentIndex)
+        self.slider_filter_end.valueChanged.connect(self.cmb_filter_end.setCurrentIndex)   
         grp_filter.setLayout(filter_layout)
         ctrl_layout.addWidget(grp_filter)
 
@@ -173,16 +180,56 @@ class MainWindow(QMainWindow):
         count = self.loader.load_all_logs_in_folder(LOG_DIR, LANDMARK_CONFIGS)
         self.log_files_list = sorted(list(self.loader.all_logs_data.keys()))
         
-        self.canvas.plot_all_trajectories(self.loader.all_logs_data)
-        
-        self.lbl_status.setText(f"Maps: {len(maps)} files\nLogs: {count} files")
-        
-        if self.log_files_list:
-            self.active_log_index = 0
-            self.activate_log(self.log_files_list[0])
+        # 将所有日志的数据合并为一个全局大列表
+        self.merged_trajectory = []
+        for log_name in self.log_files_list:
+            self.merged_trajectory.extend(self.loader.all_logs_data[log_name])
+            
+        total = len(self.merged_trajectory)
+        self.lbl_status.setText(f"Maps: {len(maps)} files\nLogs: {count} files\nTotal Frames: {total}")
+
+        if total > 0:
+            self.slider.setRange(0, total - 1) # 这是播放控制的滑块
+            
+            # ========================================================
+            # [关键修复在这里] 必须把新增的起止滑块的范围也设置为总帧数！
+            # ========================================================
+            self.slider_filter_start.blockSignals(True)
+            self.slider_filter_end.blockSignals(True)
+            
+            self.slider_filter_start.setRange(0, total - 1)
+            self.slider_filter_end.setRange(0, total - 1)
+
+            # 下拉框同步更新
+            self.cmb_filter_start.blockSignals(True)
+            self.cmb_filter_end.blockSignals(True)
+            self.cmb_filter_start.clear()
+            self.cmb_filter_end.clear()
+            
+            timestamps = [str(d.get('timestamp', f"Frame {i}")) for i, d in enumerate(self.merged_trajectory)]
+            self.cmb_filter_start.addItems(timestamps)
+            self.cmb_filter_end.addItems(timestamps)
+            
+            # 默认选中首尾，并同步给滑块
+            self.cmb_filter_start.setCurrentIndex(0)
+            self.cmb_filter_end.setCurrentIndex(total - 1)
+            self.slider_filter_start.setValue(0)
+            self.slider_filter_end.setValue(total - 1)
+            
+            # 恢复信号
+            self.cmb_filter_start.blockSignals(False)
+            self.cmb_filter_end.blockSignals(False)
+            self.slider_filter_start.blockSignals(False)
+            self.slider_filter_end.blockSignals(False)
+            # ========================================================
+            
+            self.canvas.update_landmarks(self.loader.landmarks, LANDMARK_CONFIGS)
+            
+            # 触发一次全局绘制
+            self.on_filter_changed()
+            self.update_frame_info(0)
         else:
-            self.active_log_index = -1
-            self.lbl_active_name.setText("Source: None")
+            self.lbl_status.setText("No log data loaded.")
 
     def activate_log(self, log_name):
         self.loader.select_log(log_name)
@@ -217,46 +264,39 @@ class MainWindow(QMainWindow):
             self.on_filter_changed()
 
     def on_filter_changed(self):
-        """ 当用户选择新的起止时间戳时触发 """
-        if not self.loader.trajectory_data:
+        if not hasattr(self, 'merged_trajectory') or not self.merged_trajectory:
             return
 
         start_idx = self.cmb_filter_start.currentIndex()
         end_idx = self.cmb_filter_end.currentIndex()
 
-        # 防御性判断：如果列表为空或未选中有效值
-        if start_idx < 0 or end_idx < 0:
-            return
+        if start_idx < 0 or end_idx < 0: return
 
-        # 逻辑保护：确保起点时间不能晚于终点时间
         if start_idx > end_idx:
-            # 暂时阻塞信号，将 Start 强制回退到等于 End 的时间
             self.cmb_filter_start.blockSignals(True)
             self.cmb_filter_start.setCurrentIndex(end_idx)
             self.cmb_filter_start.blockSignals(False)
             start_idx = end_idx
 
-        data = self.loader.trajectory_data
-        
-        # 更新界面上显示的截取帧数信息
+        # 更新截取帧数信息
         selected_frames = end_idx - start_idx + 1
         self.lbl_filter_info.setText(f"Selected Frames: {selected_frames} (Idx: {start_idx} to {end_idx})")
 
-        # === 截取当前时间范围内的数据 ===
-        sliced_data = data[start_idx : end_idx + 1]
+        # 截取全局数据
+        sliced_data = self.merged_trajectory[start_idx : end_idx + 1]
         x_pts = [d['x'] for d in sliced_data]
         y_pts = [d['y'] for d in sliced_data]
 
-        # === 发送给 Canvas 仅更新当前激活的这条轨迹 ===
-        active_log_name = self.log_files_list[self.active_log_index]
-        self.canvas.update_single_trajectory(active_log_name, x_pts, y_pts)
+        # 传递给画布更新单一轨迹
+        self.canvas.update_unified_trajectory(x_pts, y_pts)
+
     def on_canvas_click(self, x, y):
-        if not self.loader.all_logs_np:
-            return
+        # 匹配点击点到全局进度
+        if not self.loader.all_logs_np: return
 
         min_dist = float('inf')
         best_log = None
-        best_idx = -1
+        best_local_idx = -1
 
         for log_name, arrays in self.loader.all_logs_np.items():
             x_arr = arrays['x']
@@ -269,15 +309,19 @@ class MainWindow(QMainWindow):
             if dist < min_dist:
                 min_dist = dist
                 best_log = log_name
-                best_idx = idx
+                best_local_idx = idx
 
         if best_log and min_dist < 5.0:
-            if best_log != self.log_files_list[self.active_log_index]:
-                self.active_log_index = self.log_files_list.index(best_log)
-                self.activate_log(best_log)
-            
-            self.update_frame_info(best_idx)
-            print(f"Jumped to {best_log} frame {best_idx} (dist={min_dist:.2f})")
+            # 计算局部索引在全局列表中的绝对偏移量
+            global_idx = 0
+            for name in self.log_files_list:
+                if name == best_log:
+                    global_idx += best_local_idx
+                    break
+                global_idx += len(self.loader.all_logs_data[name])
+                
+            self.update_frame_info(global_idx)
+            print(f"Jumped to Global Frame {global_idx} (dist={min_dist:.2f})")
 
     def switch_prev_log(self):
         if not self.log_files_list: return
@@ -292,21 +336,18 @@ class MainWindow(QMainWindow):
         self.update_frame_info(0)
 
     def update_frame_info(self, idx):
-        if not self.loader.trajectory_data: return
-        idx = max(0, min(idx, len(self.loader.trajectory_data) - 1))
+        if not hasattr(self, 'merged_trajectory') or not self.merged_trajectory: return
+        idx = max(0, min(idx, len(self.merged_trajectory) - 1))
         self.current_frame_idx = idx
-        data = self.loader.trajectory_data[idx]
+        data = self.merged_trajectory[idx]
         
-        self.lbl_time.setText(data['timestamp'])
+        self.lbl_time.setText(data.get('timestamp', '--'))
         
-        # [新增] 更新界面上的状态和类型
-        # 使用 .get() 防止老日志没有这个字段报错
         state_text = data.get('loc_state', '--')
         type_text = data.get('loc_type', '--')
         self.lbl_state.setText(state_text)
         self.lbl_type.setText(type_text)
 
-        # 简单的视觉优化：如果不正常状态显示红色 (可选)
         if "RealTimeLocation" in state_text:
             self.lbl_state.setStyleSheet("color: darkgreen; font-weight: bold;")
         else:
@@ -323,10 +364,9 @@ class MainWindow(QMainWindow):
         self.canvas.set_current_point(data['x'], data['y'])
 
     def export_current_frame(self):
-        if not self.loader.trajectory_data: return
-        data = self.loader.trajectory_data[self.current_frame_idx]
-        log_name = self.log_files_list[self.active_log_index]
-        out_file = os.path.join(OUT_DIR, f"exp_{log_name}_{self.current_frame_idx}.txt")
+        if not hasattr(self, 'merged_trajectory') or not self.merged_trajectory: return
+        data = self.merged_trajectory[self.current_frame_idx]
+        out_file = os.path.join(OUT_DIR, f"exp_frame_{self.current_frame_idx}.txt")
         try:
             with open(out_file, 'w') as f:
                 f.write(f"{data}\n")
@@ -348,10 +388,6 @@ class MainWindow(QMainWindow):
             self.prev_frame()
         elif event.key() == Qt.Key_Right:
             self.next_frame()
-        elif event.key() == Qt.Key_Up:
-            self.switch_prev_log()
-        elif event.key() == Qt.Key_Down:
-            self.switch_next_log()
         else:
             super().keyPressEvent(event)
 
