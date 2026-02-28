@@ -1,9 +1,12 @@
 # 忽略所有模块下的logs文件夹（日志文件太大）
 Display_location/logs/
+Display_location/out/
+Display_location/map/
 FrameByFrameReplay/logs/
 LinearOscillation/logs/
 ShowLidarRangingError/logs/
 StaticPose/logs/
+TrajectoryComparison/logs/
 
 # 忽略Python虚拟环境
 venv/
@@ -29,7 +32,7 @@ __pycache__/
 *.swo
 *~
 .DS_Store
-FrameByFrameReplay/map/*
-FrameByFrameReplay/scans_directory/*
-ShowLidarRangingError/pcd_data/*
-Display_location/map/*
+FrameByFrameReplay/map/
+FrameByFrameReplay/scans_directory/
+ShowLidarRangingError/pcd_data/
+Display_location/map/
