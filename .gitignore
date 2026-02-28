@@ -1,0 +1,35 @@
+# 忽略所有模块下的logs文件夹（日志文件太大）
+Display_location/logs/
+FrameByFrameReplay/logs/
+LinearOscillation/logs/
+ShowLidarRangingError/logs/
+StaticPose/logs/
+
+# 忽略Python虚拟环境
+venv/
+env/
+.venv/
+
+# 忽略Python缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 忽略输出文件
+*/out/
+*.txt
+*.log
+
+# 忽略IDE配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+FrameByFrameReplay/map/*
+FrameByFrameReplay/scans_directory/*
+ShowLidarRangingError/pcd_data/*
+Display_location/map/*
