@@ -118,8 +118,8 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(self.btn_prev_frame)
         btn_layout.addWidget(self.btn_next_frame)
         
-        self.btn_save = QPushButton("Export Frame")
-        self.btn_save.clicked.connect(self.export_current_frame)
+        self.btn_save = QPushButton("Export Range")
+        self.btn_save.clicked.connect(self.export_trajectory_range)
 
         play_layout.addLayout(btn_layout)
         play_layout.addWidget(self.btn_save)
@@ -363,16 +363,51 @@ class MainWindow(QMainWindow):
         self.slider.blockSignals(False)
         self.canvas.set_current_point(data['x'], data['y'])
 
-    def export_current_frame(self):
-        if not hasattr(self, 'merged_trajectory') or not self.merged_trajectory: return
-        data = self.merged_trajectory[self.current_frame_idx]
-        out_file = os.path.join(OUT_DIR, f"exp_frame_{self.current_frame_idx}.txt")
+    def export_trajectory_range(self):
+        """ 将当前起止时间范围内的轨迹按指定格式导出到 TXT 文件 """
+        if not hasattr(self, 'merged_trajectory') or not self.merged_trajectory:
+            QMessageBox.warning(self, "Warning", "No data to export.")
+            return
+
+        # 获取当前时间过滤器选中的起止索引
+        start_idx = self.cmb_filter_start.currentIndex()
+        end_idx = self.cmb_filter_end.currentIndex()
+
+        if start_idx < 0 or end_idx < 0 or start_idx > end_idx:
+            QMessageBox.warning(self, "Warning", "Invalid time range selected.")
+            return
+
+        # 截取选定范围内的数据
+        sliced_data = self.merged_trajectory[start_idx : end_idx + 1]
+        
+        # 构造安全的文件名 (去掉时间戳里的冒号和空格，防止文件系统报错)
+        start_str = sliced_data[0].get('timestamp', f'idx{start_idx}').replace(':', '').replace(' ', '_').replace(',', '')
+        end_str = sliced_data[-1].get('timestamp', f'idx{end_idx}').replace(':', '').replace(' ', '_').replace(',', '')
+        out_file = os.path.join(OUT_DIR, f"export_traj_{start_str}_to_{end_str}.txt")
+
         try:
-            with open(out_file, 'w') as f:
-                f.write(f"{data}\n")
-            print(f"Saved: {out_file}")
+            with open(out_file, 'w', encoding='utf-8') as f:
+                for data in sliced_data:
+                    # 获取字段，如果没有则用 '--' 占位
+                    ts = data.get('timestamp', '--')
+                    state = data.get('loc_state', '--')
+                    ltype = data.get('loc_type', '--')
+                    x = data.get('x', 0.0)
+                    y = data.get('y', 0.0)
+                    t = data.get('t', 0.0)  # 这里对应 theta
+
+                    # 按照要求格式化: 时间戳 状态 定位模式 x y theta
+                    # 坐标保留 6 位小数保证精度
+                    line = f"{ts} {state} {ltype} {x:.6f} {y:.6f} {t:.6f}\n"
+                    f.write(line)
+            
+            print(f"Saved {len(sliced_data)} frames to: {out_file}")
+            QMessageBox.information(self, "Export Successful", 
+                                    f"Successfully exported {len(sliced_data)} frames.\n\nFile saved to:\n{out_file}")
+            
         except Exception as e:
-            print(e)
+            print(f"Export failed: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to write file:\n{e}")
 
     def on_slider_changed(self, val):
         self.update_frame_info(val)
