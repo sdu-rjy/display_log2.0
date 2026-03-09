@@ -49,19 +49,36 @@ class PointCloudPlayer:
 
         self.vis = o3d.visualization.VisualizerWithKeyCallback()
         self.vis.create_window(window_name="PCD Player (按 R 回正)", width=1280, height=720)
-        self.vis.get_render_option().point_size = 5.0
+        self.vis.get_render_option().point_size = 8.0  # 增大全局点大小，让 reflector 地图更明显
+        
         self.current_arrow = None
-        # 加载静态地图
-        print(f"正在加载静态地图: {map_path} ...")
-        self.static_map = o3d.io.read_point_cloud(map_path)
-        if self.static_map.is_empty():
-            print("警告: 地图文件为空或读取失败")
-            self.map_center = np.array([0, 0, 0])
+        self.map_geometries = {}  # 存储所有地图的几何体对象
+        self.map_styles = {}  # 存储所有地图的样式信息
+        
+        # 加载静态地图（支持单个文件或文件夹）
+        if os.path.isdir(map_path):
+            # 如果是文件夹，加载所有 .pcd 文件
+            self.load_all_maps(map_path)
         else:
-            self.static_map.paint_uniform_color([0.5, 0.5, 0.5]) # 灰色
-            self.vis.add_geometry(self.static_map)
-            # 获取地图中心，用于回正时对齐
-            self.map_center = self.static_map.get_center()
+            # 如果是单个文件，直接加载
+            self.load_single_map(map_path)
+            
+        # 计算地图中心（用于回正）
+        if self.map_geometries:
+            # 合并所有地图的点来计算中心
+            all_points = []
+            for pcd in self.map_geometries.values():
+                if not pcd.is_empty():
+                    all_points.append(np.asarray(pcd.points))
+            if all_points:
+                combined = np.vstack(all_points)
+                self.map_center = np.mean(combined, axis=0)
+            else:
+                self.map_center = np.array([0, 0, 0])
+        else:
+            self.map_center = np.array([0, 0, 0])
+            
+        print(f"地图中心: ({self.map_center[0]:.2f}, {self.map_center[1]:.2f}, {self.map_center[2]:.2f})")
 
         self.current_frame = o3d.geometry.PointCloud()
         self.update_frame(0)
@@ -83,6 +100,71 @@ class PointCloudPlayer:
 
         # 启动时自动回正一次视角
         self.reset_view(self.vis)
+
+    def get_map_style(self, filename):
+        """根据地图文件名返回颜色和点大小"""
+        name_lower = filename.lower()
+        
+        if 'global' in name_lower or 'normal_map' in name_lower:
+            # 全局地图：灰色，点大小 1（细密）
+            return {'color': [0.5, 0.5, 0.5], 'point_size': 1.0, 'description': '全局地图（灰色，小点）', 'z_offset': 0.0}
+        elif 'reflector' in name_lower or 'mark' in name_lower or 'feature' in name_lower:
+            # 反光板/特征地图：橙色，点大小 10（醒目），Z 轴抬高
+            return {'color': [1.0, 0.5, 0.0], 'point_size': 10.0, 'description': '反光板地图（橙色，大点）', 'z_offset': 0.3}
+        elif 'local' in name_lower:
+            # 局部地图：绿色，点大小 3
+            return {'color': [0.0, 0.8, 0.0], 'point_size': 3.0, 'description': '局部地图（绿色，中点）', 'z_offset': 0.0}
+        else:
+            # 其他地图：蓝色，点大小 5
+            return {'color': [0.0, 0.5, 1.0], 'point_size': 5.0, 'description': f'其他地图（蓝色，中点）', 'z_offset': 0.0}
+
+    def load_single_map(self, file_path):
+        """加载单个地图文件"""
+        filename = os.path.basename(file_path)
+        print(f"正在加载地图: {filename} ...")
+        
+        pcd = o3d.io.read_point_cloud(file_path)
+        if pcd.is_empty():
+            print(f"警告: 地图文件 {filename} 为空或读取失败")
+            return
+            
+        # 根据文件名设置样式
+        style = self.get_map_style(filename)
+        print(f"  - {style['description']}")
+        
+        # 应用颜色
+        pcd.paint_uniform_color(style['color'])
+        
+        # 如果有 Z 轴偏移，调整点的位置
+        if style.get('z_offset', 0.0) != 0.0:
+            points = np.asarray(pcd.points)
+            z_offset = style['z_offset']
+            # 抬高 Z 轴，使该图层显示在其他图层上方
+            points[:, 2] += z_offset
+            pcd.points = o3d.utility.Vector3dVector(points)
+        
+        # Open3D 的点大小是全局设置，无法为不同的点云设置不同的点大小
+        # 因此我们使用颜色和 Z 轴分层来区分
+        self.map_styles[filename] = style
+        
+        self.vis.add_geometry(pcd)
+        self.map_geometries[filename] = pcd
+
+    def load_all_maps(self, folder_path):
+        """加载文件夹中的所有地图文件"""
+        print(f"\n正在加载文件夹中的所有地图: {folder_path}")
+        map_files = sorted(glob.glob(os.path.join(folder_path, "*.pcd")))
+        
+        if not map_files:
+            print(f"警告: 在 {folder_path} 中没有找到 .pcd 文件")
+            return
+            
+        print(f"找到 {len(map_files)} 个地图文件:")
+        
+        for map_file in map_files:
+            self.load_single_map(map_file)
+            
+        print(f"成功加载 {len(self.map_geometries)} 个地图文件\n")
 
     def reset_view(self, vis):
         """
@@ -158,7 +240,7 @@ class PointCloudPlayer:
 
         # === 3. 箭头 (保持在最高层，避免被红色点遮挡) ===
         arrow = o3d.geometry.TriangleMesh.create_arrow(
-            cylinder_radius=0.2, cone_radius=0.5, cylinder_height=1.0, cone_height=0.5
+            cylinder_radius=0.1, cone_radius=0.25, cylinder_height=0.5, cone_height=0.25
         )
         arrow.paint_uniform_color([0.0, 0.0, 1.0]) 
         arrow.compute_vertex_normals()
@@ -209,12 +291,14 @@ class PointCloudPlayer:
         self.vis.destroy_window()
 
 if __name__ == "__main__":
-    # 配置路径
-    MAP_PATH = "./map/global_map.pcd"      
+    # 配置路径 - 支持文件夹路径或单个文件路径
+    MAP_PATH = "./map"      # 修改为文件夹路径，会加载所有地图文件
     FRAMES_FOLDER = "scans_directory" 
     
+    # 检查并创建必要目录
     if not os.path.exists(MAP_PATH):
-        with open("test_map.pcd", "w") as f: pass 
+        os.makedirs(MAP_PATH, exist_ok=True)
+        print(f"创建地图目录: {MAP_PATH}")
     if not os.path.exists(FRAMES_FOLDER):
         os.makedirs(FRAMES_FOLDER, exist_ok=True)
 
@@ -223,3 +307,5 @@ if __name__ == "__main__":
         player.run()
     except Exception as e:
         print(f"发生错误: {e}")
+        import traceback
+        traceback.print_exc()
