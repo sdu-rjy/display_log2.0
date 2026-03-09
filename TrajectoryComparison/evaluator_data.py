@@ -39,7 +39,9 @@ class EvaluatorData:
                 for line in f:
                     line = line.strip()
                     if not line: continue
-                    
+                    if "Location_state" not in line:
+                        continue
+
                     coord_match = coord_pattern.search(line)
                     if coord_match:
                         nums_str = coord_match.group(1).replace(',', ' ')
