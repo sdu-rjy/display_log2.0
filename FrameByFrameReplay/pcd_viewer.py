@@ -49,7 +49,7 @@ class PointCloudPlayer:
 
         self.vis = o3d.visualization.VisualizerWithKeyCallback()
         self.vis.create_window(window_name="PCD Player (按 R 回正)", width=1280, height=720)
-        self.vis.get_render_option().point_size = 8.0  # 增大全局点大小，让 reflector 地图更明显
+        self.vis.get_render_option().point_size = 3.0  # 调整全局点大小
         
         self.current_arrow = None
         self.map_geometries = {}  # 存储所有地图的几何体对象
@@ -68,7 +68,7 @@ class PointCloudPlayer:
             # 合并所有地图的点来计算中心
             all_points = []
             for pcd in self.map_geometries.values():
-                if not pcd.is_empty():
+                if pcd is not None and not pcd.is_empty():
                     all_points.append(np.asarray(pcd.points))
             if all_points:
                 combined = np.vstack(all_points)
@@ -132,23 +132,34 @@ class PointCloudPlayer:
         style = self.get_map_style(filename)
         print(f"  - {style['description']}")
         
-        # 应用颜色
-        pcd.paint_uniform_color(style['color'])
+        points = np.asarray(pcd.points)
         
         # 如果有 Z 轴偏移，调整点的位置
         if style.get('z_offset', 0.0) != 0.0:
-            points = np.asarray(pcd.points)
             z_offset = style['z_offset']
             # 抬高 Z 轴，使该图层显示在其他图层上方
             points[:, 2] += z_offset
+        
+        # 对于 reflector 地图，将点替换为球体，使其看起来更大
+        name_lower = filename.lower()
+        if 'reflector' in name_lower or 'mark' in name_lower or 'feature' in name_lower:
+            color = style['color']
+            sphere_radius = 0.0375  # 球体半径，使点看起来更大
+            for point in points:
+                sphere = o3d.geometry.TriangleMesh.create_sphere(radius=sphere_radius, resolution=8)
+                sphere.translate(point)
+                sphere.paint_uniform_color(color)
+                sphere.compute_vertex_normals()
+                self.vis.add_geometry(sphere)
+            self.map_geometries[filename] = None  # reflector 地图使用多个球体，不存储单个几何体
+        else:
+            # 对于其他地图，使用正常的点云渲染
             pcd.points = o3d.utility.Vector3dVector(points)
+            pcd.paint_uniform_color(style['color'])
+            self.vis.add_geometry(pcd)
+            self.map_geometries[filename] = pcd
         
-        # Open3D 的点大小是全局设置，无法为不同的点云设置不同的点大小
-        # 因此我们使用颜色和 Z 轴分层来区分
         self.map_styles[filename] = style
-        
-        self.vis.add_geometry(pcd)
-        self.map_geometries[filename] = pcd
 
     def load_all_maps(self, folder_path):
         """加载文件夹中的所有地图文件"""
