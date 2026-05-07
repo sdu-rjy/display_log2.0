@@ -88,14 +88,16 @@ class MainWindow(QMainWindow):
         self.lbl_y = QLabel("0.000")
         self.lbl_t = QLabel("0.000")
         
-        # [新增] 状态和类型标签
+        # 状态、得分和类型标签
         self.lbl_state = QLabel("--")
-        self.lbl_state.setStyleSheet("color: darkgreen; font-weight: bold;") # 加点样式区别
+        self.lbl_state.setStyleSheet("color: darkgreen; font-weight: bold;")
+        self.lbl_score = QLabel("--")
         self.lbl_type = QLabel("--")
 
         info_layout.addRow("Time:", self.lbl_time)
-        info_layout.addRow("State:", self.lbl_state) # [新增]
-        info_layout.addRow("Type:", self.lbl_type)   # [新增]
+        info_layout.addRow("State:", self.lbl_state)
+        info_layout.addRow("Score:", self.lbl_score)
+        info_layout.addRow("Type:", self.lbl_type)
         info_layout.addRow("X:", self.lbl_x)
         info_layout.addRow("Y:", self.lbl_y)
         info_layout.addRow("T (Deg):", self.lbl_t)
@@ -344,8 +346,10 @@ class MainWindow(QMainWindow):
         self.lbl_time.setText(data.get('timestamp', '--'))
         
         state_text = data.get('loc_state', '--')
+        score_value = data.get('loc_score', '--')
         type_text = data.get('loc_type', '--')
         self.lbl_state.setText(state_text)
+        self.lbl_score.setText(f"{score_value:.6f}" if isinstance(score_value, (int, float)) else str(score_value))
         self.lbl_type.setText(type_text)
 
         if "RealTimeLocation" in state_text:
@@ -391,14 +395,15 @@ class MainWindow(QMainWindow):
                     # 获取字段，如果没有则用 '--' 占位
                     ts = data.get('timestamp', '--')
                     state = data.get('loc_state', '--')
+                    score = data.get('loc_score', 0.0)
                     ltype = data.get('loc_type', '--')
                     x = data.get('x', 0.0)
                     y = data.get('y', 0.0)
                     t = data.get('t', 0.0)  # 这里对应 theta
 
-                    # 按照要求格式化: 时间戳 状态 定位模式 x y theta
+                    # 按照要求格式化: 时间戳 状态 得分 定位模式 x y theta
                     # 坐标保留 6 位小数保证精度
-                    line = f"{ts} {state} {ltype} {x:.6f} {y:.6f} {t:.6f}\n"
+                    line = f"{ts} {state} {score:.6f} {ltype} {x:.6f} {y:.6f} {t:.6f}\n"
                     f.write(line)
             
             print(f"Saved {len(sliced_data)} frames to: {out_file}")

@@ -145,15 +145,18 @@ class MainWindow(QMainWindow):
             
             ts = data['timestamps'][idx]
             state = data['states'][idx]
+            score = data['scores'][idx]
             type_ = data['types'][idx]
             px, py, pt = data['x'][idx], data['y'][idx], data['t'][idx]
-            
+
             color = "green" if "RealTimeLocation" in state else "red"
-            
+            score_text = f"{score:.6f}" if isinstance(score, (int, float)) else "--"
+
             prefix = "[Ref]" if fname == self.selected_files[0] else "[Est]"
             info_text += f"<br><b>{prefix} {fname}</b><br>"
             info_text += f"&nbsp;&nbsp;<b>Time:</b> {ts}<br>"
-            info_text += f"&nbsp;&nbsp;<b>State:</b> <span style='color:{color}'>{state}</span> (Type: {type_})<br>"
+            info_text += f"&nbsp;&nbsp;<b>State:</b> <span style='color:{color}'>{state}</span><br>"
+            info_text += f"&nbsp;&nbsp;<b>Score:</b> {score_text} (Type: {type_})<br>"
             info_text += f"&nbsp;&nbsp;<b>Pose:</b> X={px:.4f}, Y={py:.4f}, T={pt:.4f}<br>"
             
         self.frame_details_label.setText(info_text)

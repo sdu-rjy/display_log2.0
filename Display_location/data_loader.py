@@ -15,12 +15,14 @@ class DataLoader:
         data_list = []
         landmarks_dict = {cfg['keyword']: [] for cfg in landmark_configs} if landmark_configs else {}
         
-        # [修改] 定义更详细的正则
-        # 1. 提取时间
+        # 日志格式:
+        # "Location_state = %s score = %f type = %d (%f %f %f %f %f %f)"
         time_pattern = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})")
-        # 2. 提取状态和类型 (例如: Location_state = ... type = 20)
-        state_pattern = re.compile(r"Location_state\s*=\s*(?P<state>[\w:]+).*?type\s*=\s*(?P<type>\d+)")
-        # 3. 提取括号内的坐标数据
+        state_pattern = re.compile(
+            r"Location_state\s*=\s*(?P<state>[\w:]+)"
+            r".*?score\s*=\s*(?P<score>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
+            r".*?type\s*=\s*(?P<type>\d+)"
+        )
         coords_pattern = re.compile(r"\((.*?)\)")
         
         if not os.path.exists(file_path):
@@ -40,16 +42,18 @@ class DataLoader:
                     # 只有当 时间、状态、坐标 都匹配成功时才添加
                     if t_match and s_match and c_match:
                         time_str = t_match.group(1)
-                        loc_state = s_match.group("state") # [新增] 获取状态字符串
-                        loc_type = s_match.group("type")   # [新增] 获取类型数字
-                        
+                        loc_state = s_match.group("state")
+                        loc_score = float(s_match.group("score"))
+                        loc_type = s_match.group("type")
+
                         floats = list(map(float, c_match.group(1).strip().split()))
-                        
+
                         if len(floats) >= 6:
                             data_list.append({
                                 'timestamp': time_str,
-                                'loc_state': loc_state, # [新增] 存入字典
-                                'loc_type': loc_type,   # [新增] 存入字典
+                                'loc_state': loc_state,
+                                'loc_score': loc_score,
+                                'loc_type': loc_type,
                                 'x': floats[0], 'y': floats[1], 'z': floats[2],
                                 'p': floats[3], 'param_y': floats[4], 't': floats[5],
                                 'raw_floats': floats

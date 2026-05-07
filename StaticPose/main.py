@@ -14,16 +14,19 @@ LOG_FOLDER = ""  # 日志文件夹路径
 # 全局变量：存储所有解析出的定位记录
 all_records = []  
 
-# 终极版正则表达式：对多余的空格完全免疫
+# 日志格式:
+# Location_state = %s score = %f type = %d (%f %f %f %f %f %f)
 pattern = re.compile(
-    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3}.*?'  # 组1：提取时间
-    r'type\s*=\s*(\d+)\s*\(\s*'                        # 组2：提取 type（例如 20）
-    r'([-+]?\d*\.?\d+)\s+'                             # 组3：提取 X
-    r'([-+]?\d*\.?\d+)\s+'                             # 组4：提取 Y
-    r'[-+]?\d*\.?\d+\s+'                               # 忽略 Z 
-    r'[-+]?\d*\.?\d+\s+'                               # 忽略 Roll
-    r'[-+]?\d*\.?\d+\s+'                               # 忽略 Pitch
-    r'([-+]?\d*\.?\d+)\s*\)'                           # 组5：提取 RZ / Yaw (偏航角)
+    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3}.*?'
+    r'Location_state\s*=\s*([\w:]+)\s+'
+    r'score\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s+'
+    r'type\s*=\s*(\d+)\s*\(\s*'
+    r'([-+]?\d*\.?\d+)\s+'
+    r'([-+]?\d*\.?\d+)\s+'
+    r'[-+]?\d*\.?\d+\s+'
+    r'[-+]?\d*\.?\d+\s+'
+    r'[-+]?\d*\.?\d+\s+'
+    r'([-+]?\d*\.?\d+)\s*\)'
 )
 
 def load_all_logs_from_folder(folder_path):
@@ -55,12 +58,16 @@ def load_all_logs_from_folder(folder_path):
                         try:
                             time_str = match.group(1)
                             log_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                            log_type = int(match.group(2))
-                            x = float(match.group(3))
-                            y = float(match.group(4))
-                            rz = float(match.group(5))
+                            log_state = match.group(2)
+                            log_score = float(match.group(3))
+                            log_type = int(match.group(4))
+                            x = float(match.group(5))
+                            y = float(match.group(6))
+                            rz = float(match.group(7))
                             all_records.append({
                                 'time': log_time,
+                                'state': log_state,
+                                'score': log_score,
                                 'type': log_type,
                                 'x': x,
                                 'y': y,
@@ -119,6 +126,7 @@ def analyze_data():
     xs = [r['x'] for r in filtered]
     ys = [r['y'] for r in filtered]
     rzs = [r['rz'] for r in filtered]
+    scores = [r['score'] for r in filtered]
 
     def stats(values, name):
         max_v = max(values)
@@ -143,6 +151,7 @@ def analyze_data():
         + stats(xs, "X")
         + stats(ys, "Y")
         + stats(rzs, "RZ (偏航角)")
+        + stats(scores, "Score")
     )
 
     result_text.delete(1.0, tk.END)

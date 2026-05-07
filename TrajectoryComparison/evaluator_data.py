@@ -26,14 +26,18 @@ class EvaluatorData:
             return False, "No log files found in the directory."
 
         time_pattern = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})")
-        state_pattern = re.compile(r"Location_state\s*=\s*(?P<state>[\w:]+).*?type\s*=\s*(?P<type>\d+)")
+        state_pattern = re.compile(
+            r"Location_state\s*=\s*(?P<state>[\w:]+)"
+            r".*?score\s*=\s*(?P<score>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
+            r".*?type\s*=\s*(?P<type>\d+)"
+        )
         coord_pattern = re.compile(r"\(([-+\d\s.,]+)\)")
 
         for filepath in files:
             fname = os.path.basename(filepath)
             
             x_list, y_list, t_list = [], [], []
-            ts_list, state_list, type_list = [], [], []
+            ts_list, state_list, score_list, type_list = [], [], [], []
             
             with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f:
@@ -57,12 +61,13 @@ class EvaluatorData:
                             
                             state_match = state_pattern.search(line)
                             state_list.append(state_match.group('state') if state_match else "--")
+                            score_list.append(float(state_match.group('score')) if state_match else None)
                             type_list.append(state_match.group('type') if state_match else "--")
                             
             if len(x_list) > 0:
                 self.trajectories[fname] = {
                     'x': np.array(x_list), 'y': np.array(y_list), 't': np.array(t_list),
-                    'timestamps': ts_list, 'states': state_list, 'types': type_list
+                    'timestamps': ts_list, 'states': state_list, 'scores': score_list, 'types': type_list
                 }
                 self.file_names.append(fname)
                 self.max_len = max(self.max_len, len(x_list))
