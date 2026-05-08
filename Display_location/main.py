@@ -1,10 +1,13 @@
 import sys
 import os
 import numpy as np
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
-                             QHBoxLayout, QPushButton, QLabel, QFileDialog, 
-                             QSlider, QGroupBox, QFormLayout, QMessageBox)
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
+                             QHBoxLayout, QPushButton, QLabel, QFileDialog,
+                             QSlider, QGroupBox, QFormLayout, QMessageBox,
+                             QSizePolicy)
 from PyQt5.QtCore import Qt
+
+import pyqtgraph as pg
 
 from data_loader import DataLoader
 from canvas_widget import LogCanvas
@@ -46,7 +49,7 @@ class MainWindow(QMainWindow):
 
         # === 左侧控制面板 ===
         control_panel = QWidget()
-        control_panel.setFixedWidth(350) # [微调]稍微加宽一点，防止State文字太长换行
+        control_panel.setFixedWidth(380)
         ctrl_layout = QVBoxLayout(control_panel)
 
         # 1. 概览
@@ -165,7 +168,27 @@ class MainWindow(QMainWindow):
         grp_filter.setLayout(filter_layout)
         ctrl_layout.addWidget(grp_filter)
 
-        ctrl_layout.addStretch()
+        # 6. Score 曲线
+        grp_score = QGroupBox("Score Curve")
+        score_layout = QVBoxLayout()
+        self.score_plot = pg.PlotWidget(title="Score in Selected Time Range")
+        self.score_plot.showGrid(x=True, y=True)
+        self.score_plot.setLabel('left', 'Score')
+        self.score_plot.setLabel('bottom', 'Frame Index')
+        self.score_plot.setMinimumHeight(220)
+        self.score_plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.score_curve = self.score_plot.plot(pen=pg.mkPen(color=(255, 180, 0), width=2))
+        self.score_current_point = pg.ScatterPlotItem(
+            size=10,
+            symbol='o',
+            pen=pg.mkPen('w'),
+            brush=pg.mkBrush(255, 80, 80)
+        )
+        self.score_plot.addItem(self.score_current_point)
+        score_layout.addWidget(self.score_plot)
+        grp_score.setLayout(score_layout)
+        ctrl_layout.addWidget(grp_score, stretch=1)
+
         layout.addWidget(control_panel)
 
         # === 右侧绘图 ===
@@ -232,6 +255,8 @@ class MainWindow(QMainWindow):
             self.update_frame_info(0)
         else:
             self.lbl_status.setText("No log data loaded.")
+            self.score_curve.setData([], [])
+            self.score_current_point.setData([], [])
 
     def activate_log(self, log_name):
         self.loader.select_log(log_name)
@@ -288,9 +313,28 @@ class MainWindow(QMainWindow):
         sliced_data = self.merged_trajectory[start_idx : end_idx + 1]
         x_pts = [d['x'] for d in sliced_data]
         y_pts = [d['y'] for d in sliced_data]
+        score_pts = [float(d.get('loc_score', 0.0) or 0.0) for d in sliced_data]
+        frame_indices = list(range(start_idx, end_idx + 1))
 
         # 传递给画布更新单一轨迹
         self.canvas.update_unified_trajectory(x_pts, y_pts)
+        self.score_curve.setData(frame_indices, score_pts)
+        self.score_plot.setXRange(start_idx, end_idx, padding=0.02)
+
+        if score_pts:
+            min_score = min(score_pts)
+            max_score = max(score_pts)
+            if min_score == max_score:
+                padding = max(0.1, abs(min_score) * 0.05 + 0.1)
+                self.score_plot.setYRange(min_score - padding, max_score + padding, padding=0)
+            else:
+                self.score_plot.setYRange(min_score, max_score, padding=0.1)
+
+        if start_idx <= self.current_frame_idx <= end_idx:
+            current_score = float(self.merged_trajectory[self.current_frame_idx].get('loc_score', 0.0) or 0.0)
+            self.score_current_point.setData([self.current_frame_idx], [current_score])
+        else:
+            self.score_current_point.setData([], [])
 
     def on_canvas_click(self, x, y):
         # 匹配点击点到全局进度
@@ -366,6 +410,14 @@ class MainWindow(QMainWindow):
         self.slider.setValue(idx)
         self.slider.blockSignals(False)
         self.canvas.set_current_point(data['x'], data['y'])
+
+        start_idx = self.cmb_filter_start.currentIndex() if hasattr(self, 'cmb_filter_start') else -1
+        end_idx = self.cmb_filter_end.currentIndex() if hasattr(self, 'cmb_filter_end') else -1
+        if start_idx >= 0 and end_idx >= 0 and start_idx <= idx <= end_idx:
+            score_value = float(data.get('loc_score', 0.0) or 0.0)
+            self.score_current_point.setData([idx], [score_value])
+        else:
+            self.score_current_point.setData([], [])
 
     def export_trajectory_range(self):
         """ 将当前起止时间范围内的轨迹按指定格式导出到 TXT 文件 """
