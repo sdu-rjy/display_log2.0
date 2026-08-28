@@ -14,20 +14,42 @@ LOG_FOLDER = ""  # 日志文件夹路径
 # 全局变量：存储所有解析出的定位记录
 all_records = []  
 
-# 日志格式:
-# Location_state = %s score = %f type = %d (%f %f %f %f %f %f)
-pattern = re.compile(
-    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3}.*?'
-    r'Location_state\s*=\s*([\w:]+)\s+'
-    r'score\s*=\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)\s+'
-    r'type\s*=\s*(\d+)\s*\(\s*'
-    r'([-+]?\d*\.?\d+)\s+'
-    r'([-+]?\d*\.?\d+)\s+'
-    r'[-+]?\d*\.?\d+\s+'
-    r'[-+]?\d*\.?\d+\s+'
-    r'[-+]?\d*\.?\d+\s+'
-    r'([-+]?\d*\.?\d+)\s*\)'
+# 统一日志解析：兼容新格式 `HH:MM:SS.mmm` 与旧格式 `HH:MM:SS,mmm`
+NUMBER_PATTERN = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+LOCATION_PATTERN = re.compile(
+    rf"(?P<timestamp>\d{{4}}-\d{{2}}-\d{{2}}\s+\d{{2}}:\d{{2}}:\d{{2}}[.,]\d{{3}}).*?"
+    rf"Location_state\s*=\s*(?P<state>[\w:]+)"
+    rf".*?score\s*=\s*(?P<score>{NUMBER_PATTERN})"
+    rf".*?type\s*=\s*(?P<type>\d+)"
+    rf"\s*\(\s*(?P<coords>[^)]*)\)"
 )
+
+def parse_log_timestamp(value):
+    """解析新旧日志时间戳，并保留毫秒精度。"""
+    normalized = value.replace(',', '.')
+    return datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S.%f")
+
+def format_log_timestamp(value):
+    return value.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+def parse_location_line(line):
+    if "Location_state" not in line:
+        return None
+    match = LOCATION_PATTERN.search(line)
+    if not match:
+        return None
+    coords = [float(v) for v in re.findall(NUMBER_PATTERN, match.group("coords"))]
+    if len(coords) < 6:
+        return None
+    return {
+        'time': parse_log_timestamp(match.group("timestamp")),
+        'state': match.group("state"),
+        'score': float(match.group("score")),
+        'type': int(match.group("type")),
+        'x': coords[0],
+        'y': coords[1],
+        'rz': coords[5],
+    }
 
 def load_all_logs_from_folder(folder_path):
     """从指定文件夹加载所有日志文件并解析定位记录"""
@@ -53,30 +75,14 @@ def load_all_logs_from_folder(folder_path):
         try:
             with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
                 for line in f:
-                    match = pattern.search(line)
-                    if match:
-                        try:
-                            time_str = match.group(1)
-                            log_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                            log_state = match.group(2)
-                            log_score = float(match.group(3))
-                            log_type = int(match.group(4))
-                            x = float(match.group(5))
-                            y = float(match.group(6))
-                            rz = float(match.group(7))
-                            all_records.append({
-                                'time': log_time,
-                                'state': log_state,
-                                'score': log_score,
-                                'type': log_type,
-                                'x': x,
-                                'y': y,
-                                'rz': rz
-                            })
+                    try:
+                        record = parse_location_line(line)
+                        if record is not None:
+                            all_records.append(record)
                             matched_lines += 1
-                        except Exception:
-                            # 如果这单行数据转换出错，只跳过这一行，绝不跳过整个文件！
-                            continue
+                    except Exception:
+                        # 单行格式异常只跳过该行，不影响后续日志。
+                        continue
         except Exception:
             # 文件如果是二进制或系统文件打不开，直接跳过处理下一个
             continue
@@ -88,7 +94,7 @@ def load_all_logs_from_folder(folder_path):
     return matched_lines > 0
 
 def get_unique_times():
-    return sorted({r['time'].strftime("%Y-%m-%d %H:%M:%S") for r in all_records})
+    return sorted({format_log_timestamp(r['time']) for r in all_records})
 
 def get_unique_types():
     return sorted(set(r['type'] for r in all_records))
@@ -103,8 +109,8 @@ def analyze_data():
         return
 
     try:
-        start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
-        end_dt = datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S")
+        start_dt = parse_log_timestamp(start_str)
+        end_dt = parse_log_timestamp(end_str)
     except Exception:
         messagebox.showwarning("警告", "请选择有效的时间范围")
         return

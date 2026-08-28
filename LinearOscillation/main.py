@@ -21,17 +21,43 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 LOG_FOLDER = ""
 all_records = []  
 
-# 防弹级正则表达式
-pattern = re.compile(
-    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}),\d{3}.*?'  
-    r'type\s*=\s*(\d+)\s*\(\s*'                        
-    r'([-+]?\d*\.?\d+)\s+'                             
-    r'([-+]?\d*\.?\d+)\s+'                             
-    r'[-+]?\d*\.?\d+\s+'                               
-    r'[-+]?\d*\.?\d+\s+'                               
-    r'[-+]?\d*\.?\d+\s+'                               
-    r'([-+]?\d*\.?\d+)\s*\)'                           
+# 统一日志解析：兼容新格式 `HH:MM:SS.mmm` 与旧格式 `HH:MM:SS,mmm`
+NUMBER_PATTERN = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+LOCATION_PATTERN = re.compile(
+    rf"(?P<timestamp>\d{{4}}-\d{{2}}-\d{{2}}\s+\d{{2}}:\d{{2}}:\d{{2}}[.,]\d{{3}}).*?"
+    rf"Location_state\s*=\s*(?P<state>[\w:]+)"
+    rf".*?score\s*=\s*(?P<score>{NUMBER_PATTERN})"
+    rf".*?type\s*=\s*(?P<type>\d+)"
+    rf"\s*\(\s*(?P<coords>[^)]*)\)"
 )
+
+def parse_log_timestamp(value):
+    """解析新旧日志时间戳，并保留毫秒精度。"""
+    normalized = value.replace(',', '.')
+    return datetime.strptime(normalized, "%Y-%m-%d %H:%M:%S.%f")
+
+def format_log_timestamp(value):
+    """用于下拉框显示，固定输出到毫秒。"""
+    return value.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+
+def parse_location_line(line):
+    if "Location_state" not in line:
+        return None
+    match = LOCATION_PATTERN.search(line)
+    if not match:
+        return None
+    coords = [float(v) for v in re.findall(NUMBER_PATTERN, match.group("coords"))]
+    if len(coords) < 6:
+        return None
+    return {
+        'time': parse_log_timestamp(match.group("timestamp")),
+        'state': match.group("state"),
+        'score': float(match.group("score")),
+        'type': int(match.group("type")),
+        'x': coords[0],
+        'y': coords[1],
+        'rz': coords[5],
+    }
 
 def load_all_logs_from_folder(folder_path):
     global all_records
@@ -51,25 +77,14 @@ def load_all_logs_from_folder(folder_path):
         try:
             with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
                 for line in f:
-                    match = pattern.search(line)
-                    if match:
-                        try:
-                            time_str = match.group(1)
-                            log_time = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
-                            log_type = int(match.group(2))
-                            x = float(match.group(3))
-                            y = float(match.group(4))
-                            rz = float(match.group(5))
-                            all_records.append({
-                                'time': log_time,
-                                'type': log_type,
-                                'x': x,
-                                'y': y,
-                                'rz': rz
-                            })
+                    try:
+                        record = parse_location_line(line)
+                        if record is not None:
+                            all_records.append(record)
                             matched_lines += 1
-                        except Exception:
-                            continue
+                    except Exception:
+                        # 单行格式异常只跳过该行，不影响后续日志。
+                        continue
         except Exception:
             continue
 
@@ -79,7 +94,7 @@ def load_all_logs_from_folder(folder_path):
     return matched_lines > 0
 
 def get_unique_times():
-    return sorted({r['time'].strftime("%Y-%m-%d %H:%M:%S") for r in all_records})
+    return sorted({format_log_timestamp(r['time']) for r in all_records})
 
 def get_unique_types():
     return sorted(set(r['type'] for r in all_records))
@@ -93,8 +108,8 @@ def analyze_and_plot():
         messagebox.showwarning("警告", "请选择有效的类型（type）")
         return
 
-    start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
-    end_dt = datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S")
+    start_dt = parse_log_timestamp(start_str)
+    end_dt = parse_log_timestamp(end_str)
 
     if start_dt > end_dt:
         messagebox.showwarning("警告", "起始时间不能晚于结束时间")

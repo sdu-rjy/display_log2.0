@@ -15,15 +15,17 @@ class DataLoader:
         data_list = []
         landmarks_dict = {cfg['keyword']: [] for cfg in landmark_configs} if landmark_configs else {}
         
-        # 日志格式:
-        # "Location_state = %s score = %f type = %d (%f %f %f %f %f %f)"
-        time_pattern = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})")
-        state_pattern = re.compile(
-            r"Location_state\s*=\s*(?P<state>[\w:]+)"
-            r".*?score\s*=\s*(?P<score>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
-            r".*?type\s*=\s*(?P<type>\d+)"
+        # 统一兼容新旧日志格式：
+        # 新: 2026-08-27 16:40:02.223 ... Location_state = ... score = ... type = ... (...)
+        # 旧: 2024-01-15 10:30:45,123 ... Location_state = ... score = ... type = ... (...)
+        number_pattern = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+        time_pattern = re.compile(r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.,]\d{3})")
+        location_pattern = re.compile(
+            rf"Location_state\s*=\s*(?P<state>[\w:]+)"
+            rf".*?score\s*=\s*(?P<score>{number_pattern})"
+            rf".*?type\s*=\s*(?P<type>\d+)"
+            rf"\s*\(\s*(?P<coords>[^)]*)\)"
         )
-        coords_pattern = re.compile(r"\((.*?)\)")
         
         if not os.path.exists(file_path):
             return [], {}, None, None
@@ -33,20 +35,17 @@ class DataLoader:
                 lines = f.readlines()
                 
             for line in lines:
-                # [修改] 判断条件改为包含 Location_state 即可，这样能捕获所有状态
-                if "Location_state =" in line:
+                if "Location_state" in line:
                     t_match = time_pattern.search(line)
-                    s_match = state_pattern.search(line)
-                    c_match = coords_pattern.search(line)
+                    loc_match = location_pattern.search(line)
 
-                    # 只有当 时间、状态、坐标 都匹配成功时才添加
-                    if t_match and s_match and c_match:
+                    # 时间、状态/得分/type、位姿必须来自同一条 Location_state 日志
+                    if t_match and loc_match:
                         time_str = t_match.group(1)
-                        loc_state = s_match.group("state")
-                        loc_score = float(s_match.group("score"))
-                        loc_type = s_match.group("type")
-
-                        floats = list(map(float, c_match.group(1).strip().split()))
+                        loc_state = loc_match.group("state")
+                        loc_score = float(loc_match.group("score"))
+                        loc_type = loc_match.group("type")
+                        floats = [float(v) for v in re.findall(number_pattern, loc_match.group("coords"))]
 
                         if len(floats) >= 6:
                             data_list.append({
@@ -90,7 +89,7 @@ class DataLoader:
 
         count = 0
         for f in sorted(os.listdir(folder_path)):
-            if f.endswith('.txt') or f.endswith('.log'):
+            if os.path.splitext(f)[1].lower() in ('.txt', '.log'):
                 full_path = os.path.join(folder_path, f)
                 data, lms, x_arr, y_arr = self._parse_single_file(full_path, landmark_configs)
                 

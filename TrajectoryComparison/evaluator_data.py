@@ -25,13 +25,15 @@ class EvaluatorData:
         if not files:
             return False, "No log files found in the directory."
 
-        time_pattern = re.compile(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})")
-        state_pattern = re.compile(
-            r"Location_state\s*=\s*(?P<state>[\w:]+)"
-            r".*?score\s*=\s*(?P<score>[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
-            r".*?type\s*=\s*(?P<type>\d+)"
+        # 统一兼容新旧日志时间戳，并确保位姿取自同一条 Location_state 记录。
+        number_pattern = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+        time_pattern = re.compile(r"(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}[.,]\d{3})")
+        location_pattern = re.compile(
+            rf"Location_state\s*=\s*(?P<state>[\w:]+)"
+            rf".*?score\s*=\s*(?P<score>{number_pattern})"
+            rf".*?type\s*=\s*(?P<type>\d+)"
+            rf"\s*\(\s*(?P<coords>[^)]*)\)"
         )
-        coord_pattern = re.compile(r"\(([-+\d\s.,]+)\)")
 
         for filepath in files:
             fname = os.path.basename(filepath)
@@ -46,23 +48,20 @@ class EvaluatorData:
                     if "Location_state" not in line:
                         continue
 
-                    coord_match = coord_pattern.search(line)
-                    if coord_match:
-                        nums_str = coord_match.group(1).replace(',', ' ')
-                        parts = [float(p) for p in nums_str.split() if p.strip()]
-                        
-                        if len(parts) >= 3:
-                            x_list.append(parts[0])     
-                            y_list.append(parts[1])     
-                            t_list.append(parts[-1])    
-                            
-                            time_match = time_pattern.search(line)
-                            ts_list.append(time_match.group(1) if time_match else "--")
-                            
-                            state_match = state_pattern.search(line)
-                            state_list.append(state_match.group('state') if state_match else "--")
-                            score_list.append(float(state_match.group('score')) if state_match else None)
-                            type_list.append(state_match.group('type') if state_match else "--")
+                    time_match = time_pattern.search(line)
+                    loc_match = location_pattern.search(line)
+                    if not time_match or not loc_match:
+                        continue
+
+                    parts = [float(v) for v in re.findall(number_pattern, loc_match.group("coords"))]
+                    if len(parts) >= 6:
+                        x_list.append(parts[0])
+                        y_list.append(parts[1])
+                        t_list.append(parts[5])
+                        ts_list.append(time_match.group(1))
+                        state_list.append(loc_match.group('state'))
+                        score_list.append(float(loc_match.group('score')))
+                        type_list.append(loc_match.group('type'))
                             
             if len(x_list) > 0:
                 self.trajectories[fname] = {

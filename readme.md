@@ -49,44 +49,31 @@ f:\display_log2.0\
 按下 `Win + R` 键，输入 `cmd` 并回车，输入以下命令验证：
 
 ```bash
-py --version
-py -m pip --version
+py -3.11 --version
+py -3.11 -m pip --version
 
 ```
 
 *(如果正常输出版本号如 `Python 3.11.6` 和 `pip 23.x.x`，说明安装完美成功！)*
 
-#### 2.3 创建与激活虚拟环境（强烈推荐）
+#### 2.3 使用系统 Python 3.11 环境
 
-为了不污染你电脑上的全局环境，建议为本项目单独创建一个虚拟环境。在刚才的 `cmd` 窗口中依次执行：
-
-```bash
-# 1. 进入项目根目录 (请根据你的实际存放路径修改)
-cd /d F:\display_log2.0
-
-# 2. 创建名为 venv 的虚拟环境
-py -m venv venv
-
-# 3. 激活虚拟环境 (激活成功后，命令行前面会多出一个 (venv) 标识)
-.\venv\Scripts\activate
-
-```
+本项目直接使用系统安装的 Python 3.11，不使用 `.venv` / `venv` 虚拟环境。建议后续所有安装和运行命令都显式使用 `py -3.11`，避免被系统中其他 Python 版本（例如 3.15）影响。
 
 ### 3. 安装依赖库
 
-在**确保虚拟环境已激活**（命令行带有 `(venv)` 前缀）的情况下，执行以下命令一键安装所有需要的依赖。
+直接将依赖安装到系统 Python 3.11：
 *(注：已默认添加清华镜像源，解决国内下载缓慢或超时报错的问题)*
 
 ```bash
-py -m pip install PyQt5 pyqtgraph open3d numpy matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple
-
+py -3.11 -m pip install --upgrade pip
+py -3.11 -m pip install PyQt5 pyqtgraph open3d numpy matplotlib -i https://pypi.tuna.tsinghua.edu.cn/simple
 ```
 
 **验证依赖是否安装成功：**
 
 ```bash
-py -c "import PyQt5, pyqtgraph, open3d, numpy, matplotlib; print('✅ 所有依赖安装成功！')"
-
+py -3.11 -c "import PyQt5, pyqtgraph, open3d, numpy, matplotlib; print('✅ 所有依赖安装成功！')"
 ```
 
 ---
@@ -102,15 +89,19 @@ py -c "import PyQt5, pyqtgraph, open3d, numpy, matplotlib; print('✅ 所有依�
 - 将地图文件（`.pcd` 格式）放入 `Display_location/map/` 目录
 
 #### 日志格式要求
+当前解析器同时兼容毫秒前使用 `.`（新格式）或 `,`（旧格式）的时间戳。
+
+新格式示例：
+```text
+2026-08-27 16:40:02.223 INFO LocationStatusPostLoop, GomROSPureLocationManager.cpp:223, Location_state = LocationStatus::RealTimeLocation score = 87.107979 type = 70 (2.388046 -2.069225 0.000000 0.000000 0.000000 -0.004285)
 ```
-时间戳: 2024-01-15 10:30:45,123
-Location_state = RealTimeLocation:10 type = 20 (x y z roll pitch yaw)
-```
+
+旧格式时间戳如 `2024-01-15 10:30:45,123` 仍可继续读取。核心字段需要包含 `Location_state`、`score`、`type`，以及括号内至少 6 个位姿数值 `(x y z roll pitch yaw)`。
 
 #### 启动命令
 ```bash
 cd Display_location
-py main.py
+py -3.11 main.py
 ```
 
 #### 操作说明
@@ -177,7 +168,7 @@ py main.py
 #### 启动命令
 ```bash
 cd FrameByFrameReplay
-py pcd_viewer.py
+py -3.11 pcd_viewer.py
 ```
 
 #### 操作快捷键
@@ -213,7 +204,7 @@ py pcd_viewer.py
 #### 启动命令
 ```bash
 cd LinearOscillation
-py main.py
+py -3.11 main.py
 ```
 
 #### 使用流程
@@ -241,9 +232,17 @@ py main.py
 - **标准差**: 朝向角度的波动程度
 
 #### 日志格式要求
+与 `Display_location` 使用同一套定位日志解析规则，同时兼容新旧时间戳：
+
+```text
+# 新格式
+2026-08-27 16:40:02.223 INFO LocationStatusPostLoop, GomROSPureLocationManager.cpp:223, Location_state = LocationStatus::RealTimeLocation score = 87.107979 type = 70 (2.388046 -2.069225 0.000000 0.000000 0.000000 -0.004285)
+
+# 旧格式（仍兼容）
+2024-01-15 10:30:45,123 INFO ..., Location_state = RealTimeLocation score = 88.500000 type = 20 (1 2 3 4 5 6)
 ```
-2024-01-15 10:30:45,123 ... type = 20 (x y z roll pitch yaw)
-```
+
+解析时保留毫秒精度，并从同一条 `Location_state` 记录中提取 `state / score / type / x / y / yaw(rz)`。
 
 #### 注意事项
 - 需要至少 2 条数据点才能拟合直线
@@ -277,7 +276,7 @@ output_txt="./out/lidar_error_data.txt"
 #### 启动命令
 ```bash
 cd ShowLidarRangingError
-py main.py
+py -3.11 main.py
 ```
 
 #### 结果说明
@@ -296,7 +295,7 @@ py main.py
 
 ```bash
 cd ShowLidarRangingError
-py compare.py
+py -3.11 compare.py
 ```
 
 **compare.py 功能**:
@@ -319,7 +318,7 @@ py compare.py
 #### 启动命令
 ```bash
 cd StaticPose
-py main.py
+py -3.11 main.py
 ```
 
 #### 使用流程
@@ -349,9 +348,17 @@ py main.py
 - 数据量越大，统计结果越可靠
 
 #### 日志格式要求
+与 `Display_location` 使用同一套定位日志解析规则，同时兼容新旧时间戳：
+
+```text
+# 新格式
+2026-08-27 16:40:02.223 INFO LocationStatusPostLoop, GomROSPureLocationManager.cpp:223, Location_state = LocationStatus::RealTimeLocation score = 87.107979 type = 70 (2.388046 -2.069225 0.000000 0.000000 0.000000 -0.004285)
+
+# 旧格式（仍兼容）
+2024-01-15 10:30:45,123 INFO ..., Location_state = RealTimeLocation score = 88.500000 type = 20 (1 2 3 4 5 6)
 ```
-2024-01-15 10:30:45,123 ... type = 20 (x y z roll pitch yaw)
-```
+
+解析时保留毫秒精度，并从同一条 `Location_state` 记录中提取 `state / score / type / x / y / yaw(rz)`。
 
 #### 注意事项
 - 适用于静态场景数据，运动轨迹数据分析不准确
@@ -367,16 +374,17 @@ py main.py
 
 #### 数据准备
 - 将轨迹日志文件（`.log` 或 `.txt`）放入 `TrajectoryComparison/logs/` 目录
-- 日志格式要求：
-```
-2024-01-15 10:30:45,123
-Location_state = RealTimeLocation:10 type = 20 (x y z roll pitch yaw)
+- 使用与 `Display_location` 相同的统一日志解析规则，要求时间戳、`Location_state`、`score`、`type` 和 6 维位姿位于同一条记录中
+- 新旧时间戳均兼容：
+```text
+2026-08-27 16:40:02.223 INFO LocationStatusPostLoop, GomROSPureLocationManager.cpp:223, Location_state = LocationStatus::RealTimeLocation score = 87.107979 type = 70 (2.388046 -2.069225 0.000000 0.000000 0.000000 -0.004285)
+2024-01-15 10:30:45,123 INFO ..., Location_state = RealTimeLocation score = 88.500000 type = 20 (1 2 3 4 5 6)
 ```
 
 #### 启动命令
 ```bash
 cd TrajectoryComparison
-py main.py
+py -3.11 main.py
 ```
 
 #### 界面布局
@@ -447,7 +455,11 @@ py main.py
 
 * **A**: `Open3D` 非常吃内存。请在代码中尝试增加点云降采样（Voxel Downsampling）逻辑，或关闭后台高内存占用软件。
 
+**Q4: `.py` 文件打开后变成 `n~Zm ... Encrypted File ... Soft SEAL`，Python 提示源码包含空字节**
+
+* **A**: 这是终端上的 Soft SEAL 源码透明加密策略，不是 Python 文件编码问题。请使用公司批准的开发目录/受信任开发工具或联系终端安全管理员调整策略；不要直接用非受信任进程反复覆盖源码，否则修改后的 `.py` 可能被加密且 Python 无法导入。
+
 ---
 
 *内部工具，未经授权请勿外传。*
-*最后更新：2026年2月*
+*最后更新：2026年8月（统一升级全部定位日志读取模块，兼容新旧毫秒格式）*
